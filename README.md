@@ -1,4 +1,5 @@
-# Office → PDF
+# Office → PDF 
+[![CI](https://github.com/meerrec/sturdy-tribble/actions/workflows/ci.yml/badge.svg)](https://github.com/meerrec/sturdy-tribble/actions/workflows/ci.yml)
 
 Конвертация документов **DOCX** и **XLSX** в **PDF** полностью в браузере, на стороне клиента.
 Движок — **LibreOffice, скомпилированный в WebAssembly** (пакет [`@matbee/libreoffice-converter`](https://www.npmjs.com/package/@matbee/libreoffice-converter)).
