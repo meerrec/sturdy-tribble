@@ -1,0 +1,132 @@
+import { useRef, useState } from 'react';
+import type { ChangeEvent, DragEvent } from 'react';
+import type { UploadedFile } from '../atoms';
+
+/** Форматы, которые принимает <input type="file">: расширения + MIME-типы. */
+const ACCEPT =
+  '.docx,.xlsx,' +
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Человекочитаемый размер файла. */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes)) return '';
+  const units = ['Б', 'КБ', 'МБ', 'ГБ'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+interface FileUploaderProps {
+  /** Уже выбранный файл (для показа карточки). */
+  file: UploadedFile | null;
+  /** Блокировка зоны во время конвертации. */
+  disabled: boolean;
+  /** Кладёт выбранный файл в состояние; бросает Error для неподдерживаемых форматов. */
+  onSelectFile: (file: File) => Promise<void>;
+}
+
+/**
+ * Зона загрузки файла: drag & drop + выбор через системный диалог.
+ * Доступность: скрытый, но фокусируемый <input> внутри <label> — клик по зоне
+ * открывает диалог, а с клавиатуры он активируется по Enter/Space.
+ */
+export default function FileUploader({ file, disabled, onSelectFile }: FileUploaderProps) {
+  const [dragging, setDragging] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // dragenter/dragleave срабатывают и на дочерних элементах зоны,
+  // поэтому считаем глубину вложенности вместо простого флага
+  const dragDepth = useRef(0);
+
+  const pickFile = async (pickedFile: File | null | undefined) => {
+    if (!pickedFile || disabled) return;
+    setLocalError(null);
+    try {
+      // onSelectFile (useConverter.selectFile) сам проверяет формат
+      // и бросает Error с понятным сообщением для неподдерживаемых файлов
+      await onSelectFile(pickedFile);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    const files = event.dataTransfer.files;
+    if (files.length > 1) {
+      setLocalError('Перетащите только один файл.');
+      return;
+    }
+    pickFile(files[0]);
+  };
+
+  return (
+    <div>
+      <label
+        className={`dropzone${dragging ? ' dragging' : ''}`}
+        aria-disabled={disabled}
+        onDragEnter={(event) => {
+          if (disabled) return;
+          event.preventDefault();
+          dragDepth.current += 1;
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          // Без preventDefault браузер откроет файл вместо drop-обработчика
+          event.preventDefault();
+        }}
+        onDragLeave={() => {
+          dragDepth.current -= 1;
+          if (dragDepth.current <= 0) {
+            dragDepth.current = 0;
+            setDragging(false);
+          }
+        }}
+        onDrop={handleDrop}
+      >
+        <input
+          ref={inputRef}
+          className="sr-only"
+          type="file"
+          accept={ACCEPT}
+          disabled={disabled}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            pickFile(event.target.files?.[0]);
+            // Сбрасываем значение, чтобы повторный выбор того же файла срабатывал
+            event.target.value = '';
+          }}
+        />
+        <span className="dropzone-icon" aria-hidden="true">📄</span>
+        <span className="dropzone-title">
+          {file ? 'Выбрать другой файл' : 'Перетащите файл сюда'}
+        </span>
+        <span className="dropzone-hint">
+          или нажмите, чтобы выбрать — поддерживаются DOCX и XLSX
+        </span>
+      </label>
+
+      {file && (
+        <div className="file-chip">
+          <span className="file-type-badge">{file.type.toUpperCase()}</span>
+          <div className="file-meta-text">
+            <div className="file-name">{file.name}</div>
+            <div className="file-size">{formatBytes(file.size)}</div>
+          </div>
+        </div>
+      )}
+
+      {localError && (
+        <p className="dropzone-error" role="alert">
+          {localError}
+        </p>
+      )}
+    </div>
+  );
+}

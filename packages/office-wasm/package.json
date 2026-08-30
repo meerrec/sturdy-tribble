@@ -1,0 +1,19 @@
+{
+  "name": "office-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Обёртка над LibreOffice WASM: инициализация офисного движка и конвертация документов в PDF в браузере",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "dependencies": {
+    "@matbee/libreoffice-converter": "^2.7.2"
+  }
+}

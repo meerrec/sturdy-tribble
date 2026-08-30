@@ -1,0 +1,11 @@
+# Монорепозиторий: все пакеты из packages/ и apps/ становятся workspace-пакетами pnpm,
+# поэтому приложение может подключать пакет office-wasm через "office-wasm": "workspace:*"
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# pnpm 11 по умолчанию запрещает postinstall-скрипты зависимостей.
+# esbuild (нужен Vite) ставит свой нативный бинарник именно через postinstall,
+# поэтому явно разрешаем ему сборку.
+allowBuilds:
+  esbuild: true
