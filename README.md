@@ -30,6 +30,10 @@
 │   ├── office-wasm/             # обёртка над LibreOffice WASM
 │   │   ├── index.ts             #   initOffice(), convertDocumentToPdf(), disposeOffice()
 │   │   │                        #   + единый список форматов (SUPPORTED_FILE_TYPES)
+│   │   ├── strip-print-ranges.ts #  удаление областей печати из XLSX перед конвертацией
+│   │   ├── strip-print-ranges.test.ts    #   юнит-тесты (Vitest)
+│   │   ├── strip-print-ranges.e2e.test.ts #  e2e на реальном движке WASM (pnpm test:e2e)
+│   │   ├── vitest.config.ts     #   e2e исключён из обычного прогона
 │   │   ├── tsconfig.json        #   каждый пакет проверяется tsc независимо
 │   │   └── package.json
 │   └── office-converter/        # конвертер: RPC-клиент + Web Worker
@@ -122,6 +126,9 @@ lint → typecheck → test → build.
 3. По кнопке «Конвертировать» содержимое читается в `ArrayBuffer` и уходит
    в worker по transfer list (без копирования); конвертация выполняется
    внутри worker'а (LibreOffice WASM), главный поток свободен.
+   Для XLSX перед конвертацией из файла вырезаются области печати
+   (`stripPrintRangesFromXlsx`): Calc экспортирует в PDF только область
+   печати листа, и без этого шага остальное содержимое молча обрезается.
 4. Готовые PDF-байты возвращаются с transfer list, на главном потоке из них
    создаётся `Blob` и `URL.createObjectURL(...)`, который показывается в `<iframe>`.
 
@@ -162,5 +169,7 @@ header Cross-Origin-Resource-Policy "same-origin"
   в `packages/office-wasm/index.ts` — `detectFileType` и файловый диалог строятся
   от общего списка автоматически; движок умеет и другие форматы).
 - Первая конвертация после открытия страницы дольше последующих (прогрев движка).
+- Области печати XLSX («Set Print Area» в Excel) при конвертации игнорируются:
+  в PDF попадает весь лист — иначе LibreOffice обрезает всё, что вне области печати.
 - Пути к WASM-ресурсам (`/wasm/`, `/dist/`) абсолютные — при деплое под поддоменом
   в не-корень потребуется база Vite (`base`).

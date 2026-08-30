@@ -14,12 +14,16 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "E2E=1 vitest run strip-print-ranges.e2e.test.ts"
   },
   "dependencies": {
-    "@matbee/libreoffice-converter": "^2.7.2"
+    "@matbee/libreoffice-converter": "^2.7.2",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }
