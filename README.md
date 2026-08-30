@@ -26,8 +26,15 @@
 ├── pnpm-workspace.yaml          # workspace: packages/* и apps/*
 ├── package.json                 # корневой package.json (скрипты dev/build/preview)
 ├── packages/
-│   └── office-wasm/             # обёртка над LibreOffice WASM
-│       ├── index.ts             #   initOffice(), convertDocumentToPdf(), disposeOffice()
+│   ├── office-wasm/             # обёртка над LibreOffice WASM
+│   │   ├── index.ts             #   initOffice(), convertDocumentToPdf(), disposeOffice()
+│   │   └── package.json
+│   └── office-converter/        # конвертер: RPC-клиент + Web Worker
+│       ├── client.ts            #   ConverterClient: worker, init()/convert()/dispose()
+│       ├── worker/converter.worker.ts # Web Worker с протоколом postMessage
+│       ├── protocol.ts          #   типы сообщений (WorkerRequest/WorkerResponse)
+│       ├── detect-file-type.ts  #   определение типа файла по расширению
+│       ├── index.ts             #   публичный API пакета
 │       └── package.json
 └── apps/
     └── web/                     # React 18 + Vite + Jotai + TypeScript
@@ -38,9 +45,7 @@
             ├── App.tsx          # компоновка: загрузка, статусы, предпросмотр
             ├── atoms.ts         # глобальное состояние (Jotai)
             ├── styles.css
-            ├── hooks/useConverter.ts   # владеет worker'ом и переходами состояния
-            ├── worker/converter.worker.ts # Web Worker с протоколом postMessage
-            │   └── protocol.ts  # типы сообщений worker'а (WorkerRequest/WorkerResponse)
+            ├── hooks/useConverter.ts   # адаптер: клиент пакета → Jotai-атомы
             └── components/      # FileUploader, ConvertButton, PDFViewer
 ```
 
@@ -75,13 +80,13 @@ worker-скрипт библиотеки из `node_modules` в `apps/web/public
 ```text
 ┌─────────────── Главный поток ───────────────┐        ┌────────── Web Worker ──────────┐
 │  React + Jotai (UI, статусы, прогресс)      │        │  converter.worker.ts         │
-│  useConverter ── postMessage ──────────────►│        │    └─ office-wasm             │
-│        ▲                                    │        │        initOffice() (1 раз,   │
-│  Blob URL ──── iframe (предпросмотр PDF)    │        │        кэшируется)            │
-└───────┬─────────────────────────────────────┘        │        convertDocumentToPdf() │
-        │   PDF-байты (Transferable)                   │              │                 │
-        └──────────────────────────────────────────────│        ┌─────▼──────────┐     │
-                                                       │        │ browser.worker │     │
+│  useConverter → client (office-converter)   │        │    └─ office-wasm             │
+│        │ ─────── postMessage ─────────────► │        │        initOffice() (1 раз,   │
+│        ▲                                    │        │        кэшируется)            │
+│  Blob URL ──── iframe (предпросмотр PDF)    │        │        convertDocumentToPdf() │
+└───────┬─────────────────────────────────────┘        │              │                 │
+        │   PDF-байты (Transferable)                   │        ┌─────▼──────────┐     │
+        └──────────────────────────────────────────────│        │ browser.worker │     │
                                                        │        │ (вложенный     │     │
                                                        │        │  worker библ.) │     │
                                                        │        │   LibreOffice  │     │
@@ -90,8 +95,9 @@ worker-скрипт библиотеки из `node_modules` в `apps/web/public
                                                        └───────────────────────────────┘
 ```
 
-1. При открытии страницы `useConverter` поднимает Web Worker и сразу запрашивает
-   инициализацию движка (`initOffice()` кэширует промис в пакете `office-wasm`).
+1. При открытии страницы `useConverter` через клиент пакета `office-converter`
+   поднимает Web Worker и сразу запрашивает инициализацию движка
+   (`initOffice()` кэширует промис в пакете `office-wasm`).
 2. Пользователь выбирает DOCX/XLSX — содержимое читается в `ArrayBuffer`
    и кладётся в Jotai-атом.
 3. По кнопке «Конвертировать» буфер уходит в worker сообщением `postMessage`;
@@ -133,7 +139,7 @@ header Cross-Origin-Resource-Policy "same-origin"
 ## Ограничения
 
 - Поддерживаются только **DOCX** и **XLSX** (расширяется в `packages/office-wasm/index.ts`
-  и `apps/web/src/hooks/useConverter.ts` — движок умеет и другие форматы).
+  и `packages/office-converter/detect-file-type.ts` — движок умеет и другие форматы).
 - Первая конвертация после открытия страницы дольше последующих (прогрев движка).
 - Пути к WASM-ресурсам (`/wasm/`, `/dist/`) абсолютные — при деплое под поддоменом
   в не-корень потребуется база Vite (`base`).

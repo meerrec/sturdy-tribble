@@ -14,10 +14,10 @@
  *   { type: 'init-done' } | { type: 'init-error', message }
  *   { type: 'convert-done', requestId, pdfBuffer } | { type: 'convert-error', requestId, message }
  *
- * Точные типы сообщений описаны в ./protocol.ts.
+ * Точные типы сообщений описаны в ../protocol.ts.
  */
 import { initOffice, convertDocumentToPdf, disposeOffice } from 'office-wasm';
-import type { WorkerRequest, WorkerResponse } from './protocol';
+import type { WorkerRequest, WorkerResponse } from '../protocol';
 
 // В tsconfig приложения подключён lib "DOM", в котором self имеет тип Window
 // и не описывает контракт worker'а. Заводить отдельный tsconfig ради одного

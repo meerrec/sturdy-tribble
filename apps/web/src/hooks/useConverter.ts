@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import type { SupportedFileType } from 'office-wasm';
-import type { WorkerRequest, WorkerResponse } from '../worker/protocol';
+import { detectFileType, getConverterClient } from 'office-converter';
+import type { WorkerResponse } from 'office-converter';
 import {
   officeStateAtom,
   officeInitProgressAtom,
@@ -15,79 +15,22 @@ import {
 } from '../atoms';
 
 // ---------------------------------------------------------------------------
-// Жизненный цикл worker'а — модульный синглтон.
+// Адаптер над пакетом office-converter: связывает фреймворк-независимый
+// RPC-клиент (Web Worker + протокол postMessage) с Jotai-атомами приложения.
 //
-// Worker намеренно НЕ завершается при размонтировании компонента: в dev-режиме
-// StrictMode монтирует эффекты дважды, а повторная инициализация WASM стоит
-// секунды и ~240 МБ повторной загрузки. Worker живёт до выгрузки страницы
-// (браузер сам завершит его) или до HMR-обновления этого модуля.
+// Жизненным циклом worker'а владеет клиент пакета: worker переживает
+// размонтирование компонента (StrictMode монтирует эффекты дважды, а повторная
+// инициализация WASM стоит секунды и ~240 МБ) и живёт до выгрузки страницы
+// или HMR-обновления пакета office-converter.
 // ---------------------------------------------------------------------------
 
-/**
- * Незавершённый RPC-вызов конвертации: promise, ожидающий ответа worker'а.
- * pdfBuffer приходит через transfer list и всегда лежит на собственном
- * ArrayBuffer (worker передаёт копию) — поэтому тип строже, чем Uint8Array.
- */
-interface PendingRequest {
-  resolve: (pdfBuffer: Uint8Array<ArrayBuffer>) => void;
-  reject: (error: Error) => void;
-}
+const client = getConverterClient();
 
-let worker: Worker | null = null;
-let requestSeq = 0;
 let convertInFlight = false; // синхронный guard: атомы обновляются асинхронно
-const pendingRequests = new Map<number, PendingRequest>(); // requestId -> { resolve, reject }
-let activeMessageHandler: ((message: WorkerResponse) => void) | null = null;
-
-function getWorker(): Worker {
-  if (worker) return worker;
-
-  worker = new Worker(new URL('../worker/converter.worker.ts', import.meta.url), {
-    // worker собирается Vite как ES-модуль и подключает пакет office-wasm
-    type: 'module',
-  });
-
-  worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-    activeMessageHandler?.(event.data);
-  };
-
-  worker.onerror = (event) => {
-    console.error('[useConverter] ошибка worker:', event);
-    activeMessageHandler?.({
-      type: 'init-error',
-      message: event.message || 'Не удалось загрузить Web Worker',
-    });
-  };
-
-  // Сразу запрашиваем инициализацию движка — пока пользователь выбирает файл,
-  // ~240 МБ WASM-данных успеют скачаться из сети (или кэша браузера).
-  worker.postMessage({ type: 'init' } satisfies WorkerRequest);
-
-  return worker;
-}
-
-// При HMR-обновлении этого модуля старый worker корректно завершаем
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    worker?.terminate();
-    worker = null;
-    pendingRequests.clear();
-  });
-}
-
-/** Определяет тип файла по расширению имени. Возвращает null для неподдерживаемых. */
-export function detectFileType(
-  file: File | null | undefined,
-): SupportedFileType | null {
-  const name = (file?.name ?? '').toLowerCase();
-  const extension = name.split('.').pop();
-  if (extension === 'docx' || extension === 'xlsx') return extension;
-  return null;
-}
 
 /**
- * Главный хук приложения: владеет worker'ом и всеми переходами состояния.
- * Возвращает значения атомов и действия для компонентов.
+ * Главный хук приложения: подписывается на события клиента конвертера
+ * и переводит их в состояние атомов. Возвращает значения атомов и действия.
  */
 export function useConverter() {
   // --- Чтение состояния ------------------------------------------------------
@@ -111,7 +54,7 @@ export function useConverter() {
   const setConversionError = useSetAtom(conversionErrorAtom);
   const setPdfUrl = useSetAtom(pdfUrlAtom);
 
-  // --- Разбор сообщений от worker'а -----------------------------------------
+  // --- Разбор сообщений клиента ----------------------------------------------
   const handleMessage = useCallback(
     (data: WorkerResponse) => {
       switch (data.type) {
@@ -136,19 +79,11 @@ export function useConverter() {
           setOfficeInitError(data.message);
           break;
 
-        case 'convert-done': {
-          const entry = pendingRequests.get(data.requestId);
-          pendingRequests.delete(data.requestId);
-          entry?.resolve(data.pdfBuffer);
+        // convert-done / convert-error резолвятся внутри клиента пакета:
+        // они только завершают promise из client.convert(), и здесь
+        // состояние уже обновляет сам convert()
+        default:
           break;
-        }
-
-        case 'convert-error': {
-          const entry = pendingRequests.get(data.requestId);
-          pendingRequests.delete(data.requestId);
-          entry?.reject(new Error(data.message || 'Неизвестная ошибка конвертации'));
-          break;
-        }
       }
     },
     [
@@ -159,13 +94,10 @@ export function useConverter() {
     ],
   );
 
-  // --- Монтирование: регистрируем обработчик и поднимаем worker ---------------
+  // --- Монтирование: подписываемся и запускаем инициализацию движка ----------
   useEffect(() => {
-    activeMessageHandler = handleMessage;
-    getWorker();
-    return () => {
-      if (activeMessageHandler === handleMessage) activeMessageHandler = null;
-    };
+    client.init();
+    return client.subscribe(handleMessage);
   }, [handleMessage]);
 
   // --- Действия ---------------------------------------------------------------
@@ -201,20 +133,8 @@ export function useConverter() {
     setConversionProgress(null);
     setConversionError(null);
 
-    const requestId = ++requestSeq;
     try {
-      // RPC-вызов worker'а: обещание резолвится входящим convert-done
-      const pdfBuffer = await new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
-        pendingRequests.set(requestId, { resolve, reject });
-        // Буфер передаём копией (structured clone), а не через transfer list:
-        // тогда он остаётся в atom, и документ можно конвертировать повторно.
-        // Для файлов в десятки мегабайт копирование на десктопе незаметно.
-        getWorker().postMessage({
-          type: 'convert',
-          requestId,
-          payload: { buffer: file.buffer, fileType: file.type },
-        } satisfies WorkerRequest);
-      });
+      const pdfBuffer = await client.convert(file.buffer, file.type);
 
       // Старый Blob URL больше не нужен — освобождаем память
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -234,7 +154,7 @@ export function useConverter() {
     setOfficeState('initializing');
     setOfficeInitError(null);
     setOfficeInitProgress(null);
-    getWorker().postMessage({ type: 'init' } satisfies WorkerRequest);
+    client.init();
   }, [setOfficeState, setOfficeInitError, setOfficeInitProgress]);
 
   return {

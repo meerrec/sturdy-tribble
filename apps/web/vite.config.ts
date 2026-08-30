@@ -89,14 +89,15 @@ export default defineConfig({
   },
 
   worker: {
-    // Наш воркер — ES-модуль с import'ами (подключает пакет office-wasm),
-    // поэтому воркеры собираются в формате ES-модулей
+    // Воркер конвертера (из пакета office-converter) — ES-модуль с import'ами
+    // (подключает пакет office-wasm), поэтому воркеры собираются в формате ES-модулей
     format: 'es',
   },
 
   optimizeDeps: {
-    // office-wasm подключён как workspace-пакет (симлинк), Vite обрабатывает
-    // его как исходный код; пребандлинг ему не нужен и может помешать
-    exclude: ['office-wasm'],
+    // office-wasm и office-converter подключены как workspace-пакеты (симлинки),
+    // Vite обрабатывает их как исходный код; пребандлинг им не нужен
+    // и может помешать (в office-converter воркер подключается через ?worker)
+    exclude: ['office-wasm', 'office-converter'],
   },
 });

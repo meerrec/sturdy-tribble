@@ -13,6 +13,9 @@ importers:
       jotai:
         specifier: ^2.10.0
         version: 2.20.3(@babel/core@7.29.7)(@babel/template@7.29.7)(@types/react@18.3.31)(react@18.3.1)
+      office-converter:
+        specifier: workspace:*
+        version: link:../../packages/office-converter
       office-wasm:
         specifier: workspace:*
         version: link:../../packages/office-wasm
@@ -41,6 +44,12 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.3(@types/node@22.20.1)
+
+  packages/office-converter:
+    dependencies:
+      office-wasm:
+        specifier: workspace:*
+        version: link:../office-wasm
 
   packages/office-wasm:
     dependencies:

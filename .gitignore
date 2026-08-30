@@ -142,8 +142,11 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
-# Генерируемые ресурсы LibreOffice WASM:
-# копируются из node_modules в public/ плагином из vite.config.ts
+# Generated LibreOffice WASM resources:
+# copied from node_modules to public/ by the vite.config.ts plugin
 apps/web/public/wasm/
 apps/web/public/dist/
 apps/web/public/.office-wasm-version
+
+# Continue rules
+.continue/rules/CONTINUE.md

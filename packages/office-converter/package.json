@@ -1,0 +1,19 @@
+{
+  "name": "office-converter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Конвертер Office → PDF: RPC-клиент и Web Worker поверх офисного движка office-wasm",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "dependencies": {
+    "office-wasm": "workspace:*"
+  }
+}
