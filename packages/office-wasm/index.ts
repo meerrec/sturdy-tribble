@@ -11,6 +11,8 @@
  */
 import { WorkerBrowserConverter, createWasmPaths } from '@matbee/libreoffice-converter/browser';
 
+import { stripPrintRangesFromXlsx } from './strip-print-ranges';
+
 /** Типы исходных документов, поддерживаемые приложением. */
 export type SupportedFileType = 'docx' | 'xlsx';
 
@@ -126,6 +128,10 @@ export async function initOffice(options: InitOfficeOptions = {}): Promise<Worke
  * Конвертация выполняется в worker'е библиотеки (внутри нашего worker'а),
  * поэтому главный поток не блокируется.
  *
+ * Для XLSX перед конвертацией из файла вырезаются области печати
+ * (см. {@link stripPrintRangesFromXlsx}): иначе Calc экспортирует в PDF
+ * только область печати и молча обрезает всё остальное содержимое листа.
+ *
  * @param fileBuffer — бинарное содержимое файла.
  * @param fileType — тип исходного документа. Определяет,
  *        какой фильтр импорта использует LibreOffice (по расширению имени файла).
@@ -143,13 +149,19 @@ export async function convertDocumentToPdf(
     );
   }
 
+  let input = fileBuffer instanceof Uint8Array ? fileBuffer : new Uint8Array(fileBuffer);
+  if (fileType === 'xlsx') {
+    // null = областей печати нет (или файл не zip) — конвертируем исходник.
+    input = stripPrintRangesFromXlsx(input) ?? input;
+  }
+
   const converter = await initOffice();
 
   // Имя файла важно: LibreOffice выбирает фильтр импорта по расширению.
   // fileType задаётся приложением явно, а не выводится из имени пользовательского файла.
   const sourceFilename = `document.${extension}`;
 
-  const result = await converter.convert(fileBuffer, { outputFormat: 'pdf' }, sourceFilename);
+  const result = await converter.convert(input, { outputFormat: 'pdf' }, sourceFilename);
 
   return result.data;
 }
