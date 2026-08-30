@@ -1,7 +1,11 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
-import { stripPrintRangesFromXlsx } from './strip-print-ranges';
+import {
+  prepareXlsxForPdf,
+  stripHiddenSheetsFromXlsx,
+  stripPrintRangesFromXlsx
+} from './strip-print-ranges';
 
 /**
  * Собирает минимальный xlsx (zip) для тестов.
@@ -120,5 +124,107 @@ describe('stripPrintRangesFromXlsx', () => {
       ['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml'].sort()
     );
     expect(strFromU8(entries['xl/worksheets/sheet1.xml'])).toBe('<worksheet/>');
+  });
+});
+
+describe('stripHiddenSheetsFromXlsx', () => {
+  it('удаляет скрытые листы, сохраняя видимые', () => {
+    const workbookWithHiddenSheets = `
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Видимый" sheetId="1" r:id="rId1"/>
+    <sheet name="Скрытый" sheetId="2" state="hidden" r:id="rId2"/>
+    <sheet name="ОченьСкрытый" sheetId="3" state="veryHidden" r:id="rId3"/>
+  </sheets>
+</workbook>`;
+
+    const xml = strFromU8(
+      unzipSync(stripHiddenSheetsFromXlsx(buildXlsx(workbookWithHiddenSheets))!)['xl/workbook.xml']
+    );
+
+    expect(xml).toContain('Видимый');
+    expect(xml).not.toContain('Скрытый');
+    expect(xml).not.toContain('veryHidden');
+    expect(xml).not.toContain('r:id="rId2"');
+  });
+
+  it('не трогает файл без скрытых листов', () => {
+    const workbookWithoutHiddenSheets = `
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheets>
+    <sheet name="Лист1" sheetId="1" r:id="rId1"/>
+    <sheet name="Лист2" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>`;
+
+    expect(stripHiddenSheetsFromXlsx(buildXlsx(workbookWithoutHiddenSheets))).toBeNull();
+  });
+
+  it('работает с префиксами пространства имён, любым порядком атрибутов и одинарными кавычками', () => {
+    const namespacedWorkbook = `
+<x:workbook xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <x:sheets>
+    <x:sheet r:id="rId1" state='hidden' name="Скрытый" sheetId="2"/>
+    <x:sheet name="Видимый" sheetId="1" r:id="rId2"/>
+  </x:sheets>
+</x:workbook>`;
+
+    const xml = strFromU8(
+      unzipSync(stripHiddenSheetsFromXlsx(buildXlsx(namespacedWorkbook))!)['xl/workbook.xml']
+    );
+
+    expect(xml).toContain('Видимый');
+    expect(xml).not.toContain('Скрытый');
+  });
+
+  it('не удаляет последний лист, даже если он скрыт', () => {
+    const workbookWithOnlyHiddenSheet = `
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheets>
+    <sheet name="ЕдинственныйСкрытый" sheetId="1" state="hidden" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+
+    expect(stripHiddenSheetsFromXlsx(buildXlsx(workbookWithOnlyHiddenSheet))).toBeNull();
+  });
+});
+
+describe('prepareXlsxForPdf', () => {
+  it('за один проход удаляет области печати и скрытые листы', () => {
+    const workbookWithBoth = `
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheets>
+    <sheet name="Видимый" sheetId="1" r:id="rId1"/>
+    <sheet name="Скрытый" sheetId="2" state="hidden" r:id="rId2"/>
+  </sheets>
+  <definedNames>
+    <definedName name="_xlnm.Print_Area" localSheetId="0">'Видимый'!$A$1:$E$10</definedName>
+  </definedNames>
+</workbook>`;
+
+    const xml = strFromU8(
+      unzipSync(prepareXlsxForPdf(buildXlsx(workbookWithBoth))!)['xl/workbook.xml']
+    );
+
+    expect(xml).toContain('Видимый');
+    expect(xml).not.toContain('Скрытый');
+    expect(xml).not.toContain('Print_Area');
+    expect(xml).not.toContain('definedNames');
+  });
+
+  it('возвращает null, если менять нечего', () => {
+    const plainWorkbook = `
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheets>
+    <sheet name="Лист1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+
+    expect(prepareXlsxForPdf(buildXlsx(plainWorkbook))).toBeNull();
+  });
+
+  it('возвращает null для не-zip данных', () => {
+    expect(prepareXlsxForPdf(strToU8('это не zip-архив'))).toBeNull();
   });
 });

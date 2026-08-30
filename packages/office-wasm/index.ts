@@ -9,9 +9,10 @@
  * Примечание: npm-пакета с именем «wasm-office» не существует — реальный
  * аналог описанного порта LibreOffice именно этот пакет.
  */
+import type { ConversionOptions } from '@matbee/libreoffice-converter';
 import { WorkerBrowserConverter, createWasmPaths } from '@matbee/libreoffice-converter/browser';
 
-import { stripPrintRangesFromXlsx } from './strip-print-ranges';
+import { prepareXlsxForPdf } from './strip-print-ranges';
 
 /** Типы исходных документов, поддерживаемые приложением. */
 export type SupportedFileType = 'docx' | 'xlsx';
@@ -75,6 +76,19 @@ export function isSupportedFileType(extension: string): extension is SupportedFi
 }
 
 /**
+ * Опции экспорта Calc в PDF для XLSX: каждый лист — на одной странице.
+ *
+ * По умолчанию лист шире печатной области Letter/A4 разбивается по колонкам:
+ * «хвост» таблицы уезжает на отдельную, почти пустую страницу и выглядит
+ * обрезанным. SinglePageSheets масштабирует лист целиком на одну страницу
+ * (размер страницы движок подгоняет под содержимое листа).
+ *
+ * Формат значения — JSON-вариант filter data LibreOfficeKit: движок
+ * передаёт эту строку в documentSaveAs как есть.
+ */
+export const XLSX_PDF_FILTER_OPTIONS = '{"SinglePageSheets":{"type":"boolean","value":true}}';
+
+/**
  * Инициализирует движок LibreOffice WASM.
  *
  * Выполняется один раз: результат кэшируется в initPromise, поэтому функцию
@@ -128,9 +142,14 @@ export async function initOffice(options: InitOfficeOptions = {}): Promise<Worke
  * Конвертация выполняется в worker'е библиотеки (внутри нашего worker'а),
  * поэтому главный поток не блокируется.
  *
- * Для XLSX перед конвертацией из файла вырезаются области печати
- * (см. {@link stripPrintRangesFromXlsx}): иначе Calc экспортирует в PDF
- * только область печати и молча обрезает всё остальное содержимое листа.
+ * Для XLSX перед конвертацией файл проходит препроцессинг
+ * (см. {@link prepareXlsxForPdf}):
+ *  - вырезаются области печати — иначе Calc экспортирует в PDF только
+ *    область печати и молча обрезает всё остальное содержимое листа;
+ *  - вырезаются скрытые листы — при SinglePageSheets движок экспортирует
+ *    и их, хотя при обычной печати они не печатаются.
+ * Сам экспорт идёт с {@link XLSX_PDF_FILTER_OPTIONS}: каждый лист попадает
+ * в PDF целиком, одной страницей, без разрезания по колонкам.
  *
  * @param fileBuffer — бинарное содержимое файла.
  * @param fileType — тип исходного документа. Определяет,
@@ -150,9 +169,13 @@ export async function convertDocumentToPdf(
   }
 
   let input = fileBuffer instanceof Uint8Array ? fileBuffer : new Uint8Array(fileBuffer);
+  const conversionOptions: ConversionOptions =
+    fileType === 'xlsx'
+      ? { outputFormat: 'pdf', filterOptions: XLSX_PDF_FILTER_OPTIONS }
+      : { outputFormat: 'pdf' };
   if (fileType === 'xlsx') {
-    // null = областей печати нет (или файл не zip) — конвертируем исходник.
-    input = stripPrintRangesFromXlsx(input) ?? input;
+    // null = менять нечего (или файл не zip) — конвертируем исходник.
+    input = prepareXlsxForPdf(input) ?? input;
   }
 
   const converter = await initOffice();
@@ -161,7 +184,7 @@ export async function convertDocumentToPdf(
   // fileType задаётся приложением явно, а не выводится из имени пользовательского файла.
   const sourceFilename = `document.${extension}`;
 
-  const result = await converter.convert(input, { outputFormat: 'pdf' }, sourceFilename);
+  const result = await converter.convert(input, conversionOptions, sourceFilename);
 
   return result.data;
 }

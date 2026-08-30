@@ -1,0 +1,22 @@
+# Git и CI
+.git
+.github
+
+# Зависимости — ставятся внутри образа
+node_modules
+**/node_modules
+
+# Артефакты сборки — собираются внутри образа
+dist
+**/dist
+
+# Локальные копии WASM-ресурсов (~240 МБ): плагин в vite.config.ts
+# перекопирует их из свежеустановленных node_modules при сборке в образе
+apps/web/public/wasm
+apps/web/public/dist
+apps/web/public/.office-wasm-version
+
+# Прочее
+.DS_Store
+*.log
+.continue

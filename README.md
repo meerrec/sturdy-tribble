@@ -1,4 +1,5 @@
-# Office → PDF 
+# Office → PDF
+
 [![CI](https://github.com/meerrec/sturdy-tribble/actions/workflows/ci.yml/badge.svg)](https://github.com/meerrec/sturdy-tribble/actions/workflows/ci.yml)
 
 Конвертация документов **DOCX** и **XLSX** в **PDF** полностью в браузере, на стороне клиента.
@@ -30,7 +31,7 @@
 │   ├── office-wasm/             # обёртка над LibreOffice WASM
 │   │   ├── index.ts             #   initOffice(), convertDocumentToPdf(), disposeOffice()
 │   │   │                        #   + единый список форматов (SUPPORTED_FILE_TYPES)
-│   │   ├── strip-print-ranges.ts #  удаление областей печати из XLSX перед конвертацией
+│   │   ├── strip-print-ranges.ts #  препроцессинг XLSX: области печати, скрытые листы
 │   │   ├── strip-print-ranges.test.ts    #   юнит-тесты (Vitest)
 │   │   ├── strip-print-ranges.e2e.test.ts #  e2e на реальном движке WASM (pnpm test:e2e)
 │   │   ├── vitest.config.ts     #   e2e исключён из обычного прогона
@@ -126,9 +127,10 @@ lint → typecheck → test → build.
 3. По кнопке «Конвертировать» содержимое читается в `ArrayBuffer` и уходит
    в worker по transfer list (без копирования); конвертация выполняется
    внутри worker'а (LibreOffice WASM), главный поток свободен.
-   Для XLSX перед конвертацией из файла вырезаются области печати
-   (`stripPrintRangesFromXlsx`): Calc экспортирует в PDF только область
-   печати листа, и без этого шага остальное содержимое молча обрезается.
+   XLSX перед конвертацией проходит препроцессинг (`prepareXlsxForPdf`:
+   вырезаются области печати и скрытые листы), а экспорт идёт с опцией
+   `SinglePageSheets` — каждый лист попадает в PDF целиком, одной страницей,
+   без разрезания по колонкам.
 4. Готовые PDF-байты возвращаются с transfer list, на главном потоке из них
    создаётся `Blob` и `URL.createObjectURL(...)`, который показывается в `<iframe>`.
 
@@ -169,7 +171,12 @@ header Cross-Origin-Resource-Policy "same-origin"
   в `packages/office-wasm/index.ts` — `detectFileType` и файловый диалог строятся
   от общего списка автоматически; движок умеет и другие форматы).
 - Первая конвертация после открытия страницы дольше последующих (прогрев движка).
-- Области печати XLSX («Set Print Area» в Excel) при конвертации игнорируются:
-  в PDF попадает весь лист — иначе LibreOffice обрезает всё, что вне области печати.
+- Каждый лист XLSX экспортируется **одной страницей** (`SinglePageSheets`):
+  размер страницы движок подгоняет под содержимое листа. Области печати
+  («Set Print Area» в Excel) при этом игнорируются — в PDF попадает весь лист;
+  скрытые листы вырезаются из файла перед конвертацией и в PDF не попадают.
+- **Диаграммы из XLSX в PDF не попадают**: в WASM-сборке LibreOffice отсутствует
+  модуль отрисовки диаграмм (chart2), движок молча их пропускает. Картинки,
+  условное форматирование и прочее содержимое листа конвертируются полностью.
 - Пути к WASM-ресурсам (`/wasm/`, `/dist/`) абсолютные — при деплое под поддоменом
   в не-корень потребуется база Vite (`base`).

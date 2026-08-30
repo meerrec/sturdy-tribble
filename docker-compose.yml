@@ -1,0 +1,22 @@
+# Локальный запуск приложения Office → PDF в Docker.
+#
+#   docker compose up -d --build
+#
+# Приложение будет доступно на http://localhost:8080
+# (порт на хосте можно поменять в настройке ports ниже).
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: office-to-pdf:local
+    ports:
+      - '8080:80'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1/healthz']
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
