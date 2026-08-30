@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CROSS_ORIGIN_ISOLATION_HEADERS: Record<string, string> = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'require-corp',
-  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin'
 };
 
 // ---------------------------------------------------------------------------
@@ -30,9 +30,11 @@ const CROSS_ORIGIN_ISOLATION_HEADERS: Record<string, string> = {
 // pnpm (node-linker=isolated) она лежит в node_modules самого пакета, а не
 // приложения. Поэтому резолвим её из контекста пакета office-wasm, а не apps/web.
 // ---------------------------------------------------------------------------
-const officeWasmRequire = createRequire(path.join(__dirname, '../../packages/office-wasm/index.ts'));
+const officeWasmRequire = createRequire(
+  path.join(__dirname, '../../packages/office-wasm/index.ts')
+);
 const LIB_PACKAGE_DIR = path.dirname(
-  officeWasmRequire.resolve('@matbee/libreoffice-converter/package.json'),
+  officeWasmRequire.resolve('@matbee/libreoffice-converter/package.json')
 );
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MARKER_FILE = path.join(PUBLIC_DIR, '.office-wasm-version');
@@ -48,7 +50,7 @@ const MARKER_FILE = path.join(PUBLIC_DIR, '.office-wasm-version');
  */
 function copyOfficeAssets(): void {
   const { version } = JSON.parse(
-    readFileSync(path.join(LIB_PACKAGE_DIR, 'package.json'), 'utf8'),
+    readFileSync(path.join(LIB_PACKAGE_DIR, 'package.json'), 'utf8')
   ) as { version: string };
 
   const alreadyCopied =
@@ -73,7 +75,7 @@ function officeWasmAssetsPlugin(): Plugin {
     // buildStart вызывается и при старте dev-сервера, и в начале vite build
     buildStart() {
       copyOfficeAssets();
-    },
+    }
   };
 }
 
@@ -81,23 +83,23 @@ export default defineConfig({
   plugins: [react(), officeWasmAssetsPlugin()],
 
   server: {
-    headers: CROSS_ORIGIN_ISOLATION_HEADERS,
+    headers: CROSS_ORIGIN_ISOLATION_HEADERS
   },
 
   preview: {
-    headers: CROSS_ORIGIN_ISOLATION_HEADERS,
+    headers: CROSS_ORIGIN_ISOLATION_HEADERS
   },
 
   worker: {
     // Воркер конвертера (из пакета office-converter) — ES-модуль с import'ами
     // (подключает пакет office-wasm), поэтому воркеры собираются в формате ES-модулей
-    format: 'es',
+    format: 'es'
   },
 
   optimizeDeps: {
     // office-wasm и office-converter подключены как workspace-пакеты (симлинки),
     // Vite обрабатывает их как исходный код; пребандлинг им не нужен
     // и может помешать (в office-converter воркер подключается через ?worker)
-    exclude: ['office-wasm', 'office-converter'],
-  },
+    exclude: ['office-wasm', 'office-converter']
+  }
 });

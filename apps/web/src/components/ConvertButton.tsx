@@ -11,12 +11,7 @@ interface ConvertButtonProps {
  */
 export default function ConvertButton({ disabled, converting, onConvert }: ConvertButtonProps) {
   return (
-    <button
-      type="button"
-      className="btn"
-      disabled={disabled}
-      onClick={onConvert}
-    >
+    <button type="button" className="btn" disabled={disabled} onClick={onConvert}>
       {converting ? (
         <>
           <span className="spinner" aria-hidden="true" />

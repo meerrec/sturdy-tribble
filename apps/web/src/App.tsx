@@ -3,18 +3,7 @@ import ConvertButton from './components/ConvertButton';
 import PDFViewer from './components/PDFViewer';
 import { useConverter } from './hooks/useConverter';
 import type { OfficeState, ProgressInfo } from './atoms';
-
-/** Человекочитаемый размер файла (для карточки выбранного файла). */
-function formatBytes(bytes: number): string {
-  const units = ['Б', 'КБ', 'МБ', 'ГБ'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
+import { formatBytes } from './lib/format';
 
 interface OfficeStatusProps {
   state: OfficeState;
@@ -57,10 +46,7 @@ interface StatusBlockProps {
  * сообщает, иначе — анимированный «неопределённый» прогресс.
  */
 function StatusBlock({ progress, label, note }: StatusBlockProps) {
-  const percent =
-    progress != null && Number.isFinite(progress.percent)
-      ? progress.percent
-      : null;
+  const percent = progress != null && Number.isFinite(progress.percent) ? progress.percent : null;
   return (
     <div className="status">
       <div className="status-label">
@@ -92,7 +78,7 @@ export default function App() {
     canConvert,
     selectFile,
     convert,
-    retryInit,
+    retryInit
   } = useConverter();
 
   const isConverting = conversionState === 'converting';
@@ -102,23 +88,14 @@ export default function App() {
       <header className="app-header">
         <h1>Office → PDF</h1>
         <p className="app-subtitle">
-          Конвертация DOCX и XLSX в PDF прямо в браузере — файлы не покидают ваш
-          компьютер
+          Конвертация DOCX и XLSX в PDF прямо в браузере — файлы не покидают ваш компьютер
         </p>
-        <OfficeStatus
-          state={officeState}
-          progress={officeInitProgress}
-          onRetry={retryInit}
-        />
+        <OfficeStatus state={officeState} progress={officeInitProgress} onRetry={retryInit} />
       </header>
 
       <main className="content">
         <section className="card" aria-label="Загрузка файла">
-          <FileUploader
-            file={file}
-            disabled={isConverting}
-            onSelectFile={selectFile}
-          />
+          <FileUploader file={file} disabled={isConverting} onSelectFile={selectFile} />
         </section>
 
         {file && (
@@ -130,11 +107,7 @@ export default function App() {
                 <div className="file-size">{formatBytes(file.size)}</div>
               </div>
             </div>
-            <ConvertButton
-              disabled={!canConvert}
-              converting={isConverting}
-              onConvert={convert}
-            />
+            <ConvertButton disabled={!canConvert} converting={isConverting} onConvert={convert} />
           </section>
         )}
 
@@ -152,10 +125,7 @@ export default function App() {
 
           {isConverting && (
             <section className="card">
-              <StatusBlock
-                progress={conversionProgress}
-                label="Конвертация документа…"
-              />
+              <StatusBlock progress={conversionProgress} label="Конвертация документа…" />
             </section>
           )}
 
@@ -163,11 +133,7 @@ export default function App() {
             <section className="card error-banner" role="alert">
               <strong>Не удалось инициализировать LibreOffice WASM.</strong>
               <div>{officeInitError || 'Неизвестная ошибка'}</div>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={retryInit}
-              >
+              <button type="button" className="btn btn-secondary" onClick={retryInit}>
                 Повторить инициализацию
               </button>
             </section>
@@ -191,16 +157,18 @@ export default function App() {
 
         {pdfUrl && (
           <section className="card viewer-card">
-            <PDFViewer pdfUrl={pdfUrl} sourceFileName={file?.name} />
+            {/* key={pdfUrl}: новый документ — полностью новый экземпляр
+                просмотрщика (не показывает старый PDF из кэша iframe) */}
+            <PDFViewer key={pdfUrl} pdfUrl={pdfUrl} sourceFileName={file?.name} />
           </section>
         )}
       </main>
 
       <footer className="app-footer">
         <p>
-          Движок — LibreOffice в WebAssembly (<code>@matbee/libreoffice-converter</code>).
-          Для работы требуется браузер с поддержкой SharedArrayBuffer и
-          заголовками COOP/COEP (Chrome, Edge, Firefox).
+          Движок — LibreOffice в WebAssembly (<code>@matbee/libreoffice-converter</code>). Для
+          работы требуется браузер с поддержкой SharedArrayBuffer и заголовками COOP/COEP (Chrome,
+          Edge, Firefox).
         </p>
       </footer>
     </div>

@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import type { SupportedFileType } from 'office-wasm';
+import type { OfficeProgressInfo, SupportedFileType } from 'office-wasm';
 
 // ---------------------------------------------------------------------------
 // Глобальное состояние приложения (Jotai-атомы).
@@ -9,24 +9,23 @@ import type { SupportedFileType } from 'office-wasm';
 /** Статус офисного движка: 'initializing' | 'ready' | 'error'. */
 export type OfficeState = 'initializing' | 'ready' | 'error';
 
-/** Прогресс загрузки/инициализации WASM-модуля или конвертации. */
-export interface ProgressInfo {
-  /** Процент выполнения, 0..100. */
-  percent: number;
-  /** Человекочитаемое описание текущего этапа. */
-  message: string;
-}
+/**
+ * Прогресс загрузки/инициализации WASM-модуля или конвертации.
+ * Переиспользуем тип пакета office-wasm, чтобы не дублировать его форму.
+ */
+export type ProgressInfo = OfficeProgressInfo;
 
 /**
  * Выбранный пользователем файл.
- * Буфер лежит в атоме, чтобы его можно было передать в worker повторно
- * (например, при повторной конвертации после ошибки).
+ * Содержимое держим как File: буфер читается при каждой конвертации и
+ * передаётся в worker по transfer list (см. useConverter.convert), поэтому
+ * хранить его в состоянии нельзя.
  */
 export interface UploadedFile {
   name: string;
   size: number;
   type: SupportedFileType;
-  buffer: ArrayBuffer;
+  file: File;
 }
 
 /** Статус конвертации: 'idle' | 'converting' | 'done' | 'error'. */
@@ -61,5 +60,5 @@ export const canConvertAtom = atom(
   (get) =>
     Boolean(get(fileAtom)) &&
     get(officeStateAtom) === 'ready' &&
-    get(conversionStateAtom) !== 'converting',
+    get(conversionStateAtom) !== 'converting'
 );

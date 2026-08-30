@@ -13,7 +13,13 @@
       "default": "./index.ts"
     }
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@matbee/libreoffice-converter": "^2.7.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

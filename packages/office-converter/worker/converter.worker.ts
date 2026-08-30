@@ -38,7 +38,7 @@ let activeRequestId: number | null = null; // id конвертации, вып�
 function postError(
   type: 'init-error' | 'convert-error',
   requestId: number | null,
-  error: unknown,
+  error: unknown
 ): void {
   console.error(`[converter.worker] ${type}:`, error);
   const message = error instanceof Error ? error.message : String(error);
@@ -69,9 +69,9 @@ ctx.onmessage = async (event) => {
               phase: initDone ? 'convert' : 'init',
               requestId: initDone ? activeRequestId : null,
               percent: info.percent,
-              message: info.message,
+              message: info.message
             });
-          },
+          }
         });
         initDone = true;
         ctx.postMessage({ type: 'init-done' });

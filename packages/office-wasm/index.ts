@@ -9,10 +9,7 @@
  * Примечание: npm-пакета с именем «wasm-office» не существует — реальный
  * аналог описанного порта LibreOffice именно этот пакет.
  */
-import {
-  WorkerBrowserConverter,
-  createWasmPaths,
-} from '@matbee/libreoffice-converter/browser';
+import { WorkerBrowserConverter, createWasmPaths } from '@matbee/libreoffice-converter/browser';
 
 /** Типы исходных документов, поддерживаемые приложением. */
 export type SupportedFileType = 'docx' | 'xlsx';
@@ -54,8 +51,26 @@ let initPromise: Promise<WorkerBrowserConverter> | null = null;
 /** Отображение поддерживаемых типов файлов на расширение для LibreOffice. */
 const FILE_TYPE_TO_EXTENSION: Record<SupportedFileType, string> = {
   docx: 'docx',
-  xlsx: 'xlsx',
+  xlsx: 'xlsx'
 };
+
+/**
+ * Все поддерживаемые типы исходных документов — единый источник правды:
+ * от него строятся detectFileType в office-converter и accept у <input type="file">.
+ * Добавление нового формата = одна строка в FILE_TYPE_TO_EXTENSION.
+ */
+export const SUPPORTED_FILE_TYPES = Object.keys(FILE_TYPE_TO_EXTENSION) as SupportedFileType[];
+
+/** MIME-типы форматов (для атрибута accept и файловых диалогов). */
+export const FILE_TYPE_TO_MIME: Record<SupportedFileType, string> = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+};
+
+/** Проверяет, поддерживается ли расширение файла (без точки). */
+export function isSupportedFileType(extension: string): extension is SupportedFileType {
+  return extension in FILE_TYPE_TO_EXTENSION;
+}
 
 /**
  * Инициализирует движок LibreOffice WASM.
@@ -68,9 +83,7 @@ const FILE_TYPE_TO_EXTENSION: Record<SupportedFileType, string> = {
  * @param options — необязательные опции (см. {@link InitOfficeOptions}).
  * @returns Резолвится экземпляром конвертера, когда движок готов.
  */
-export async function initOffice(
-  options: InitOfficeOptions = {},
-): Promise<WorkerBrowserConverter> {
+export async function initOffice(options: InitOfficeOptions = {}): Promise<WorkerBrowserConverter> {
   if (initPromise) {
     return initPromise;
   }
@@ -87,7 +100,7 @@ export async function initOffice(
       browserWorkerJs: BROWSER_WORKER_URL,
       onProgress: (info) => {
         onProgress?.({ percent: info.percent, message: info.message });
-      },
+      }
     });
 
     // Загружает WASM-модуль (~240 МБ при первом запуске, далее — из кэша браузера)
@@ -121,12 +134,12 @@ export async function initOffice(
  */
 export async function convertDocumentToPdf(
   fileBuffer: ArrayBuffer | Uint8Array,
-  fileType: SupportedFileType,
+  fileType: SupportedFileType
 ): Promise<Uint8Array> {
   const extension = FILE_TYPE_TO_EXTENSION[fileType];
   if (!extension) {
     throw new TypeError(
-      `Неподдерживаемый тип файла: "${fileType}". Поддерживаются только: ${Object.keys(FILE_TYPE_TO_EXTENSION).join(', ')}`,
+      `Неподдерживаемый тип файла: "${fileType}". Поддерживаются только: ${Object.keys(FILE_TYPE_TO_EXTENSION).join(', ')}`
     );
   }
 
@@ -154,4 +167,3 @@ export async function disposeOffice(): Promise<void> {
     await converter.destroy();
   }
 }
-console.log("");

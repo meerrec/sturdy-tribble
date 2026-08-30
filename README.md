@@ -28,12 +28,17 @@
 ├── packages/
 │   ├── office-wasm/             # обёртка над LibreOffice WASM
 │   │   ├── index.ts             #   initOffice(), convertDocumentToPdf(), disposeOffice()
+│   │   │                        #   + единый список форматов (SUPPORTED_FILE_TYPES)
+│   │   ├── tsconfig.json        #   каждый пакет проверяется tsc независимо
 │   │   └── package.json
 │   └── office-converter/        # конвертер: RPC-клиент + Web Worker
 │       ├── client.ts            #   ConverterClient: worker, init()/convert()/dispose()
 │       ├── worker/converter.worker.ts # Web Worker с протоколом postMessage
 │       ├── protocol.ts          #   типы сообщений (WorkerRequest/WorkerResponse)
-│       ├── detect-file-type.ts  #   определение типа файла по расширению
+│       ├── detect-file-type.ts  #   определение типа файла по имени
+│       ├── client.test.ts       #   тесты RPC-клиента (заглушка worker'а)
+│       ├── detect-file-type.test.ts
+│       ├── tsconfig.json
 │       ├── index.ts             #   публичный API пакета
 │       └── package.json
 └── apps/
@@ -45,6 +50,7 @@
             ├── App.tsx          # компоновка: загрузка, статусы, предпросмотр
             ├── atoms.ts         # глобальное состояние (Jotai)
             ├── styles.css
+            ├── lib/format.ts    #   утилиты форматирования (+ тест)
             ├── hooks/useConverter.ts   # адаптер: клиент пакета → Jotai-атомы
             └── components/      # FileUploader, ConvertButton, PDFViewer
 ```
@@ -75,6 +81,18 @@ worker-скрипт библиотеки из `node_modules` в `apps/web/public
 `wasm/` и `dist/`, см. `.gitignore`). Если версия библиотеки обновилась —
 ресурсы перекопируются автоматически.
 
+## Разработка
+
+```bash
+pnpm typecheck  # проверка типов всех пакетов (у каждого свой tsconfig)
+pnpm test       # юнит-тесты (Vitest)
+pnpm lint       # ESLint
+pnpm format     # форматирование Prettier
+```
+
+CI (`.github/workflows/ci.yml`) на push в `main` и в PR прогоняет
+lint → typecheck → test → build.
+
 ## Как это работает
 
 ```text
@@ -98,10 +116,11 @@ worker-скрипт библиотеки из `node_modules` в `apps/web/public
 1. При открытии страницы `useConverter` через клиент пакета `office-converter`
    поднимает Web Worker и сразу запрашивает инициализацию движка
    (`initOffice()` кэширует промис в пакете `office-wasm`).
-2. Пользователь выбирает DOCX/XLSX — содержимое читается в `ArrayBuffer`
-   и кладётся в Jotai-атом.
-3. По кнопке «Конвертировать» буфер уходит в worker сообщением `postMessage`;
-   конвертация выполняется внутри worker'а (LibreOffice WASM), главный поток свободен.
+2. Пользователь выбирает DOCX/XLSX — файл кладётся в Jotai-атом как есть,
+   без чтения содержимого.
+3. По кнопке «Конвертировать» содержимое читается в `ArrayBuffer` и уходит
+   в worker по transfer list (без копирования); конвертация выполняется
+   внутри worker'а (LibreOffice WASM), главный поток свободен.
 4. Готовые PDF-байты возвращаются с transfer list, на главном потоке из них
    создаётся `Blob` и `URL.createObjectURL(...)`, который показывается в `<iframe>`.
 
@@ -138,8 +157,9 @@ header Cross-Origin-Resource-Policy "same-origin"
 
 ## Ограничения
 
-- Поддерживаются только **DOCX** и **XLSX** (расширяется в `packages/office-wasm/index.ts`
-  и `packages/office-converter/detect-file-type.ts` — движок умеет и другие форматы).
+- Поддерживаются только **DOCX** и **XLSX** (расширяется одной строкой
+  в `packages/office-wasm/index.ts` — `detectFileType` и файловый диалог строятся
+  от общего списка автоматически; движок умеет и другие форматы).
 - Первая конвертация после открытия страницы дольше последующих (прогрев движка).
 - Пути к WASM-ресурсам (`/wasm/`, `/dist/`) абсолютные — при деплое под поддоменом
   в не-корень потребуется база Vite (`base`).

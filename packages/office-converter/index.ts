@@ -15,6 +15,6 @@
  * приложения) живёт у потребителя, который подписывается на события клиента.
  */
 export { ConverterClient, getConverterClient } from './client';
-export type { ConverterListener } from './client';
+export type { ConverterClientOptions, ConverterListener } from './client';
 export { detectFileType } from './detect-file-type';
 export type { WorkerRequest, WorkerResponse } from './protocol';

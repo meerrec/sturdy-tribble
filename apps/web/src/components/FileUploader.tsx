@@ -1,25 +1,17 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
+import { FILE_TYPE_TO_MIME, SUPPORTED_FILE_TYPES } from 'office-wasm';
 import type { UploadedFile } from '../atoms';
+import { formatBytes } from '../lib/format';
 
-/** Форматы, которые принимает <input type="file">: расширения + MIME-типы. */
-const ACCEPT =
-  '.docx,.xlsx,' +
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-/** Человекочитаемый размер файла. */
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes)) return '';
-  const units = ['Б', 'КБ', 'МБ', 'ГБ'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
+/**
+ * Форматы, которые принимает <input type="file">: расширения + MIME-типы.
+ * Строится от общего списка форматов пакета office-wasm — при добавлении
+ * нового формата здесь ничего менять не нужно.
+ */
+const ACCEPT = SUPPORTED_FILE_TYPES.flatMap((type) => [`.${type}`, FILE_TYPE_TO_MIME[type]]).join(
+  ','
+);
 
 interface FileUploaderProps {
   /** Уже выбранный файл (для показа карточки). */
@@ -27,7 +19,7 @@ interface FileUploaderProps {
   /** Блокировка зоны во время конвертации. */
   disabled: boolean;
   /** Кладёт выбранный файл в состояние; бросает Error для неподдерживаемых форматов. */
-  onSelectFile: (file: File) => Promise<void>;
+  onSelectFile: (file: File) => void;
 }
 
 /**
@@ -43,13 +35,13 @@ export default function FileUploader({ file, disabled, onSelectFile }: FileUploa
   // поэтому считаем глубину вложенности вместо простого флага
   const dragDepth = useRef(0);
 
-  const pickFile = async (pickedFile: File | null | undefined) => {
+  const pickFile = (pickedFile: File | null | undefined) => {
     if (!pickedFile || disabled) return;
     setLocalError(null);
     try {
       // onSelectFile (useConverter.selectFile) сам проверяет формат
       // и бросает Error с понятным сообщением для неподдерживаемых файлов
-      await onSelectFile(pickedFile);
+      onSelectFile(pickedFile);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
     }
@@ -103,12 +95,15 @@ export default function FileUploader({ file, disabled, onSelectFile }: FileUploa
             event.target.value = '';
           }}
         />
-        <span className="dropzone-icon" aria-hidden="true">📄</span>
+        <span className="dropzone-icon" aria-hidden="true">
+          📄
+        </span>
         <span className="dropzone-title">
           {file ? 'Выбрать другой файл' : 'Перетащите файл сюда'}
         </span>
         <span className="dropzone-hint">
-          или нажмите, чтобы выбрать — поддерживаются DOCX и XLSX
+          или нажмите, чтобы выбрать — поддерживаются{' '}
+          {SUPPORTED_FILE_TYPES.map((type) => type.toUpperCase()).join(' и ')}
         </span>
       </label>
 

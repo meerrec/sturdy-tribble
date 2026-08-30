@@ -12,20 +12,18 @@ interface PDFViewerProps {
  * PDF рендерится встроенным просмотрщиком браузера (Chromium/Firefox).
  *
  * Ключевые моменты:
- *  - key={pdfUrl} — при новом URL iframe полностью пересоздаётся, чтобы
- *    просмотрщик не показывал предыдущий документ из своего кэша;
+ *  - компонент рендерится с key={pdfUrl} (см. App): при новом URL он
+ *    пересоздаётся целиком, и просмотрщик не показывает предыдущий
+ *    документ из своего кэша, а состояние загрузки сбрасывается само;
  *  - Blob URL живёт в атоме pdfUrlAtom и отзывается (revokeObjectURL)
  *    при замене файла или результата — см. useConverter.
  */
 export default function PDFViewer({ pdfUrl, sourceFileName }: PDFViewerProps) {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   if (!pdfUrl) {
-    return (
-      <div className="viewer-placeholder">
-        Результат конвертации появится здесь
-      </div>
-    );
+    return <div className="viewer-placeholder">Результат конвертации появится здесь</div>;
   }
 
   // Имя для скачивания: «отчёт.xlsx» → «отчёт.pdf»
@@ -43,18 +41,34 @@ export default function PDFViewer({ pdfUrl, sourceFileName }: PDFViewerProps) {
         </a>
       </div>
       <div className="viewer-frame-wrap">
-        {loading && (
+        {loading && !loadError && (
           <div className="viewer-loading">
             <span className="spinner" aria-hidden="true" />
             Загрузка PDF…
           </div>
         )}
-        <iframe
-          key={pdfUrl}
-          title="Предпросмотр сконвертированного PDF-документа"
-          src={pdfUrl}
-          onLoad={() => setLoading(false)}
-        />
+        {loadError && (
+          <div className="viewer-error" role="alert">
+            Не удалось отобразить предпросмотр PDF.
+            <a className="btn btn-secondary" href={pdfUrl} download={downloadName}>
+              Скачать PDF
+            </a>
+          </div>
+        )}
+        {!loadError && (
+          <iframe
+            title="Предпросмотр сконвертированного PDF-документа"
+            src={pdfUrl}
+            onLoad={() => {
+              setLoading(false);
+              setLoadError(false);
+            }}
+            onError={() => {
+              setLoading(false);
+              setLoadError(true);
+            }}
+          />
+        )}
       </div>
     </div>
   );

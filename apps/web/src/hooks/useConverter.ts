@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { detectFileType, getConverterClient } from 'office-converter';
 import type { WorkerResponse } from 'office-converter';
@@ -11,7 +11,7 @@ import {
   conversionProgressAtom,
   conversionErrorAtom,
   pdfUrlAtom,
-  canConvertAtom,
+  canConvertAtom
 } from '../atoms';
 
 // ---------------------------------------------------------------------------
@@ -25,8 +25,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const client = getConverterClient();
-
-let convertInFlight = false; // синхронный guard: атомы обновляются асинхронно
 
 /**
  * Главный хук приложения: подписывается на события клиента конвертера
@@ -54,11 +52,28 @@ export function useConverter() {
   const setConversionError = useSetAtom(conversionErrorAtom);
   const setPdfUrl = useSetAtom(pdfUrlAtom);
 
+  // Синхронный guard: атомы обновляются асинхронно, поэтому для защиты
+  // от двойного клика держим флаг в ref, а не в состоянии.
+  const convertInFlightRef = useRef(false);
+  // Последнее сообщение прогресса: библиотека может слать сотни одинаковых
+  // событий на одну конвертацию — дубли не пропускаем в атомы (и в React).
+  const lastProgressRef = useRef<(WorkerResponse & { type: 'progress' }) | null>(null);
+
   // --- Разбор сообщений клиента ----------------------------------------------
   const handleMessage = useCallback(
     (data: WorkerResponse) => {
       switch (data.type) {
-        case 'progress':
+        case 'progress': {
+          const prev = lastProgressRef.current;
+          if (
+            prev &&
+            prev.phase === data.phase &&
+            prev.percent === data.percent &&
+            prev.message === data.message
+          ) {
+            break;
+          }
+          lastProgressRef.current = data;
           // Прогресс приходит и от инициализации, и от конвертации;
           // worker помечает сообщение фазой
           if (data.phase === 'init') {
@@ -67,6 +82,7 @@ export function useConverter() {
             setConversionProgress({ percent: data.percent, message: data.message });
           }
           break;
+        }
 
         case 'init-done':
           setOfficeState('ready');
@@ -86,12 +102,7 @@ export function useConverter() {
           break;
       }
     },
-    [
-      setOfficeState,
-      setOfficeInitProgress,
-      setOfficeInitError,
-      setConversionProgress,
-    ],
+    [setOfficeState, setOfficeInitProgress, setOfficeInitError, setConversionProgress]
   );
 
   // --- Монтирование: подписываемся и запускаем инициализацию движка ----------
@@ -102,15 +113,16 @@ export function useConverter() {
 
   // --- Действия ---------------------------------------------------------------
 
-  /** Читает выбранный файл в ArrayBuffer и кладёт его в состояние. */
+  /**
+   * Проверяет формат и кладёт выбранный файл в состояние.
+   * Содержимое не читается: буфер понадобится только при конвертации.
+   */
   const selectFile = useCallback(
-    async (file: File) => {
-      const type = detectFileType(file);
+    (file: File) => {
+      const type = detectFileType(file.name);
       if (!type) {
         throw new Error('Неподдерживаемый формат. Выберите файл DOCX или XLSX.');
       }
-
-      const buffer = await file.arrayBuffer();
 
       // Выбрали новый файл — сбрасываем результат предыдущей конвертации
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -118,23 +130,29 @@ export function useConverter() {
       setConversionState('idle');
       setConversionError(null);
       setConversionProgress(null);
+      lastProgressRef.current = null;
 
-      setFile({ name: file.name, size: file.size, type, buffer });
+      setFile({ name: file.name, size: file.size, type, file });
     },
-    [pdfUrl, setFile, setPdfUrl, setConversionState, setConversionError, setConversionProgress],
+    [pdfUrl, setFile, setPdfUrl, setConversionState, setConversionError, setConversionProgress]
   );
 
   /** Запускает конвертацию текущего файла в PDF. */
   const convert = useCallback(async () => {
-    if (!file || conversionState === 'converting' || convertInFlight) return;
+    if (!file || conversionState === 'converting' || convertInFlightRef.current) return;
 
-    convertInFlight = true;
+    convertInFlightRef.current = true;
     setConversionState('converting');
     setConversionProgress(null);
     setConversionError(null);
+    lastProgressRef.current = null;
 
     try {
-      const pdfBuffer = await client.convert(file.buffer, file.type);
+      // Буфер читаем на каждый запуск: client передаёт его в worker
+      // по transfer list (без копирования) и забирает владение,
+      // поэтому держать буфер между конвертациями нельзя
+      const buffer = await file.file.arrayBuffer();
+      const pdfBuffer = await client.convert(buffer, file.type, { transfer: true });
 
       // Старый Blob URL больше не нужен — освобождаем память
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -145,15 +163,24 @@ export function useConverter() {
       setConversionError(error instanceof Error ? error.message : String(error));
       setConversionState('error');
     } finally {
-      convertInFlight = false;
+      convertInFlightRef.current = false;
     }
-  }, [file, conversionState, pdfUrl, setConversionState, setConversionProgress, setConversionError, setPdfUrl]);
+  }, [
+    file,
+    conversionState,
+    pdfUrl,
+    setConversionState,
+    setConversionProgress,
+    setConversionError,
+    setPdfUrl
+  ]);
 
   /** Повторная попытка инициализации движка после ошибки. */
   const retryInit = useCallback(() => {
     setOfficeState('initializing');
     setOfficeInitError(null);
     setOfficeInitProgress(null);
+    lastProgressRef.current = null;
     client.init();
   }, [setOfficeState, setOfficeInitError, setOfficeInitProgress]);
 
@@ -172,6 +199,6 @@ export function useConverter() {
     // Действия
     selectFile,
     convert,
-    retryInit,
+    retryInit
   };
 }
